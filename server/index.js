@@ -174,7 +174,7 @@ app.get('/api/health', (req, res) => {
 
 // Rota catch-all para o frontend
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../dist/index.html'));
+  res.sendFile(path.join(__dirname, '../static/index.html'));
 });
 
 // Iniciar servidor
