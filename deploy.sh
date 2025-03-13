@@ -49,7 +49,7 @@ sudo systemctl enable ftp-manager
 sudo systemctl restart ftp-manager
 
 # Configurar nginx
-sudo cp nginx.conf /etc/nginx/sites-available/ftp-manager
+sudo cp ftp-manager /etc/nginx/sites-available/ftp-manager
 sudo ln -sf /etc/nginx/sites-available/ftp-manager /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl restart nginx
 
