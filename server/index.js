@@ -43,14 +43,15 @@ app.use(express.json());
 app.use(morgan('dev'));
 
 // Servir arquivos estáticos do frontend
-app.use(express.static(path.join(__dirname, '../dist')));
+app.use(express.static(path.join(__dirname, '../static')));
 
-// Função auxiliar para executar comandos shell
-const execPromise = (command) => {
+// Função auxiliar para executar comandos shell com sudo
+const execSudoCommand = (command) => {
   return new Promise((resolve, reject) => {
-    exec(command, (error, stdout, stderr) => {
+    // Usar NOPASSWD sudo para comandos específicos
+    exec(`sudo -n ${command}`, (error, stdout, stderr) => {
       if (error) {
-        reject(error);
+        reject(new Error(`Command failed: ${error.message}\nStderr: ${stderr}`));
         return;
       }
       resolve(stdout);
@@ -81,17 +82,21 @@ app.post('/api/create_user', async (req, res) => {
       });
     }
 
-    // Criar arquivo de usuário virtual usando sudo
-    const virtualUserContent = `${username}\n${password}`;
-    
     try {
-      // Usar echo e sudo para escrever no arquivo de usuários virtuais
-      await execPromise(`echo "${virtualUserContent}" | sudo tee -a /etc/vsftpd_virtual_users > /dev/null`);
-      
-      // Criar o banco de dados usando db_load com sudo
-      await execPromise(`echo "${virtualUserContent}" | sudo db_load -T -t hash /etc/vsftpd_virtual_users.db`);
+      // Criar arquivo temporário com as credenciais
+      const tempFile = `/tmp/vsftpd_user_${username}`;
+      await fs.writeFile(tempFile, `${username}\n${password}\n`);
 
-      // Criar arquivo de configuração do usuário
+      // Adicionar usuário ao arquivo de usuários virtuais
+      await execSudoCommand(`cat ${tempFile} | tee -a /etc/vsftpd_virtual_users`);
+
+      // Atualizar banco de dados
+      await execSudoCommand(`cat ${tempFile} | db_load -T -t hash /etc/vsftpd_virtual_users.db`);
+
+      // Remover arquivo temporário
+      await fs.remove(tempFile);
+
+      // Criar configuração do usuário
       const permissions = {
         write_enable: write_permission.toLowerCase() === 'yes' ? 'YES' : 'NO',
         anon_upload_enable: 'YES',
@@ -105,9 +110,22 @@ app.post('/api/create_user', async (req, res) => {
           .join('\n')
       }`;
 
-      const configFile = `/etc/vsftpd_user_conf/${username}`;
-      await fs.writeFile(configFile, configContent);
-      await execPromise(`sudo chown root:root ${configFile}`);
+      // Criar arquivo de configuração do usuário
+      const userConfigFile = `/tmp/vsftpd_conf_${username}`;
+      await fs.writeFile(userConfigFile, configContent);
+      
+      // Mover para o diretório final
+      await execSudoCommand(`cat ${userConfigFile} | tee /etc/vsftpd_user_conf/${username}`);
+      
+      // Remover arquivo temporário
+      await fs.remove(userConfigFile);
+
+      // Ajustar permissões
+      await execSudoCommand(`chown root:root /etc/vsftpd_user_conf/${username}`);
+      await execSudoCommand(`chmod 644 /etc/vsftpd_user_conf/${username}`);
+
+      // Reiniciar serviço vsftpd
+      await execSudoCommand('systemctl restart vsftpd');
 
       res.status(200).json({ 
         success: true, 
