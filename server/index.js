@@ -81,14 +81,14 @@ app.post('/api/create_user', async (req, res) => {
       });
     }
 
-    // Criar arquivo de usuário virtual
+    // Criar arquivo de usuário virtual usando sudo
     const virtualUserContent = `${username}\n${password}`;
     
     try {
-      // Escrever diretamente no arquivo de usuários virtuais
-      await fs.appendFile('/etc/vsftpd_virtual_users', virtualUserContent + '\n');
+      // Usar echo e sudo para escrever no arquivo de usuários virtuais
+      await execPromise(`echo "${virtualUserContent}" | sudo tee -a /etc/vsftpd_virtual_users > /dev/null`);
       
-      // Criar o banco de dados usando db_load com echo
+      // Criar o banco de dados usando db_load com sudo
       await execPromise(`echo "${virtualUserContent}" | sudo db_load -T -t hash /etc/vsftpd_virtual_users.db`);
 
       // Criar arquivo de configuração do usuário
